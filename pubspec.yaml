@@ -1,0 +1,30 @@
+name: hmis_teleconsultation
+description: "A separate, modular Flutter package for Agora RTC-based Teleconsultation in HMIS."
+version: 0.0.1
+homepage: https://aarogyaone.com
+publish_to: 'none'
+
+environment:
+  sdk: '>=3.8.0 <4.0.0'
+  flutter: '>=3.24.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  agora_rtc_engine: ^6.6.4
+  permission_handler: '>=11.0.0 <14.0.0'
+  url_launcher: ^6.3.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.aarogyaone.hmis_teleconsultation
+        pluginClass: HmisTeleconsultationPlugin
+      ios:
+        pluginClass: HmisTeleconsultationPlugin
