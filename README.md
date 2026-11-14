@@ -184,85 +184,59 @@ class MyHospitalClinicalDataProvider implements TeleconsultationClinicalDataProv
 
 ## App Size / Release Build (Android)
 
-Agora (`agora_rtc_engine 6.6.4` → native SDK `4.6.4`) adds about **71 MB of native code per CPU type**. A universal APK has 4 CPU types (arm64-v8a, armeabi-v7a, x86, x86_64), so the app goes from ~55 MB to **400 MB+**.
+Agora (`agora_rtc_engine 6.6.4` → native SDK `4.6.4`) includes **every** Agora extension, and every CPU type in the APK gets its own copy. Two things keep the host app small:
 
-A Flutter plugin **cannot** remove native libraries or CPU types for the app. Its `packagingOptions` / `abiFilters` are ignored. Put the settings below in the **host app's** `android/app/build.gradle`.
+### 1. Unused Agora extensions are removed automatically (done by this package)
 
-### 1. Build per CPU type (biggest saving, ~75%)
+`android/build.gradle` in this package excludes the Agora modules that `TeleConsultationController` never uses, in every project of the host app. **The host app needs no changes for this.**
+
+| Removed module | Feature |
+|---|---|
+| `full-voice-drive` | Lip sync |
+| `spatial-audio` | Spatial audio |
+| `full-face-capture` / `full-face-detect` | Face capture / detection |
+| `full-virtual-background` | Virtual background |
+| `aiaec` | AI echo cancellation |
+| `audio-beauty` | Voice beautifier |
+| `full-content-inspect` | Content moderation |
+| `full-vqa` | Video quality analyzer |
+| `full-video-av1-codec-enc` | AV1 encoder |
+
+Kept: core RTC + video codec, `clear-vision` (beauty), `ains` (AI noise suppression), `screen-capture` (screen share).
+
+Measured on a test app (release, arm64): **88.2 MB → 62.0 MB**.
+
+Need one of the removed features? Add this to the host app's `android/gradle.properties`:
+
+```properties
+# keep only some of the removed modules
+hmisTeleconsultation.keepAgoraModules=aiaec,full-virtual-background
+# or keep everything (turns the size saving off)
+hmisTeleconsultation.keepAllAgoraExtensions=true
+```
+
+> When you add a controller feature that needs a removed module, also remove it from `hmisUnusedAgoraModules` in `android/build.gradle`.
+
+### 2. Build per CPU type (done by the host app)
+
+A universal APK holds arm, arm64 and x86_64, so Agora is in it three times (167 MB on the test app). Use:
 
 | Where the app goes | Command |
 |---|---|
 | Play Store | `flutter build appbundle --release` (Play sends each phone only its CPU type) |
 | Direct APK (QA / MDM / side-load) | `flutter build apk --release --split-per-abi` and share `app-arm64-v8a-release.apk` |
 
-Or force one APK for real phones only (x86 / x86_64 are only for emulators):
-
-```gradle
-android {
-    defaultConfig {
-        ndk { abiFilters 'arm64-v8a', 'armeabi-v7a' } // drop armeabi-v7a if old 32-bit phones are not needed
-    }
-}
-```
-
 Always measure **release** builds. Debug APKs are much larger.
 
-### 2. Remove Agora extensions this package does not use (~26 MB per CPU type)
+Optional: `minifyEnabled true` + `shrinkResources true` in the host app's release build. `android/consumer-rules.pro` already keeps `io.agora.**`.
 
-```gradle
-android {
-    packagingOptions {
-        jniLibs {
-            excludes += [
-                '**/libagora_lip_sync_extension.so',
-                '**/libagora_spatial_audio_extension.so',
-                '**/libagora_face_capture_extension.so',
-                '**/libagora_segmentation_extension.so',          // virtual background
-                '**/libagora_ai_echo_cancellation_extension.so',
-                '**/libagora_ai_echo_cancellation_ll_extension.so',
-                '**/libagora_audio_beauty_extension.so',
-                '**/libagora_content_inspect_extension.so',
-                '**/libagora_video_quality_analyzer_extension.so',
-                '**/libagora_video_av1_encoder_extension.so',
-                '**/libagora_face_detection_extension.so',
-            ]
-        }
-    }
-}
-```
+### iOS
 
-**Do NOT exclude** these. `TeleConsultationController` uses them:
+App Store thinning removes the CPU types a device does not need. Check the size in App Store Connect, not the `.ipa` file size.
 
-| Library | Feature |
-|---|---|
-| `libagora_clear_vision_extension.so` | Beauty / video enhancement (`setBeautyEffectOptions`) |
-| `libagora_ai_noise_suppression_extension.so` | AI noise suppression (`setAINSMode`) |
-| `libagora_screen_capture_extension.so` | Screen share (`startScreenCapture`) |
+### How to check
 
-> If you later add a feature that needs an excluded extension (for example virtual background or AI echo cancellation), remove its line from the list.
-
-### 3. Shrink the release build
-
-```gradle
-buildTypes {
-    release {
-        minifyEnabled true
-        shrinkResources true
-    }
-}
-```
-
-`android/consumer-rules.pro` already keeps `io.agora.**`, so R8 will not break Agora.
-
-### 4. iOS
-
-App Store thinning removes the CPU types a device does not need. Check the size in App Store Connect (the thinned size), not the `.ipa` file size.
-
-### Expected result
-
-`app-arm64-v8a-release.apk` should be about **100–110 MB** instead of 400 MB+. To check it:
-- `flutter build apk --release --analyze-size --target-platform android-arm64`
-- Android Studio → Build → Analyze APK → `lib/arm64-v8a`. The excluded `libagora_*` files should be gone.
+- Android Studio → Build → Analyze APK → `lib/arm64-v8a`. There should be no `libagora_lip_sync_extension.so`, `libagora_spatial_audio_extension.so` and so on.
 - Make a real call and test video, beauty, noise suppression and screen share.
 
 ---
