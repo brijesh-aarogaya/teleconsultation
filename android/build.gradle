@@ -46,3 +46,53 @@ android {
 dependencies {
     implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
 }
+
+// ---------------------------------------------------------------------------
+// APK size: drop Agora extensions this package does not use.
+//
+// agora_rtc_engine pulls `io.agora.rtc:full-sdk`, which brings EVERY Agora
+// extension (~26 MB of native code per CPU type). We exclude the modules our
+// TeleConsultationController never calls, for every project in the host app,
+// so the host app gets the saving without any changes of its own.
+//
+// Kept (used by the controller):
+//   full-rtc-basic, full-video-codec-enc  -> core calling / video
+//   clear-vision                          -> setBeautyEffectOptions
+//   ains                                  -> setAINSMode
+//   screen-capture                        -> startScreenCapture
+//
+// Host app opt-outs (android/gradle.properties):
+//   hmisTeleconsultation.keepAllAgoraExtensions=true          -> keep everything
+//   hmisTeleconsultation.keepAgoraModules=aiaec,full-virtual-background
+//                                                             -> keep only these
+// ---------------------------------------------------------------------------
+def hmisUnusedAgoraModules = [
+    'full-voice-drive',          // lip sync               (libagora_lip_sync_extension)
+    'spatial-audio',             // spatial audio          (libagora_spatial_audio_extension)
+    'full-face-capture',         // face capture           (libagora_face_capture_extension)
+    'full-virtual-background',   // virtual background     (libagora_segmentation_extension)
+    'aiaec',                     // AI echo cancellation   (libagora_ai_echo_cancellation_extension)
+    'audio-beauty',              // voice beautifier       (libagora_audio_beauty_extension)
+    'full-content-inspect',      // content moderation     (libagora_content_inspect_extension)
+    'full-vqa',                  // video quality analyzer (libagora_video_quality_analyzer_extension)
+    'full-video-av1-codec-enc',  // AV1 encoder            (libagora_video_av1_encoder_extension)
+    'full-face-detect',          // face detection         (libagora_face_detection_extension)
+]
+
+def hmisKeepAll = (rootProject.findProperty('hmisTeleconsultation.keepAllAgoraExtensions') ?: 'false')
+        .toString().toBoolean()
+
+if (!hmisKeepAll) {
+    def hmisKeepModules = (rootProject.findProperty('hmisTeleconsultation.keepAgoraModules') ?: '')
+            .toString().split(',')*.trim().findAll { it }
+    def hmisExcluded = hmisUnusedAgoraModules - hmisKeepModules
+
+    rootProject.allprojects { p ->
+        p.configurations.configureEach { c ->
+            // A configuration that is already resolved cannot be changed.
+            if (c.state == Configuration.State.UNRESOLVED) {
+                hmisExcluded.each { m -> c.exclude(group: 'io.agora.rtc', module: m) }
+            }
+        }
+    }
+}
